@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>دفتر المبيعات — إدارة مبيعات وأقساط الأجهزة الكهربائية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===================== شريط الإشعارات (Toast) ===================== -->
+<div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+<!-- ===================== تنبيه النسخ الاحتياطي ===================== -->
+<div id="backupReminderBanner" class="backup-banner" hidden>
+  <span id="backupReminderText">لم تقم بتصدير نسخة احتياطية منذ فترة. يُفضّل تصدير نسخة الآن لحماية بياناتك.</span>
+  <div class="backup-banner__actions">
+    <button type="button" id="btnExportFromBanner" class="btn btn--small btn--primary">تصدير الآن</button>
+    <button type="button" id="btnDismissBackupReminder" class="btn btn--small btn--ghost-dark">إخفاء</button>
+  </div>
+</div>
+
+<!-- ===================== الرأس ===================== -->
+<header class="topbar">
+  <div class="topbar__brand">
+    <span class="topbar__mark">⚡</span>
+    <div>
+      <h1 class="topbar__title">دفتر المبيعات</h1>
+      <p class="topbar__subtitle">إدارة مبيعات وعملاء وأقساط الأجهزة الكهربائية</p>
+    </div>
+  </div>
+  <div class="topbar__actions">
+    <button type="button" id="btnExport" class="btn btn--ghost">
+      تصدير JSON
+    </button>
+    <button type="button" id="btnExportCSV" class="btn btn--ghost">
+      تصدير Excel (CSV)
+    </button>
+    <label for="importFile" class="btn btn--ghost btn--file">
+      استيراد البيانات
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </label>
+    <button type="button" id="btnNewSale" class="btn btn--primary">
+      + عملية بيع جديدة
+    </button>
+  </div>
+</header>
+
+<main class="page">
+
+  <!-- ===================== لوحة الإحصائيات ===================== -->
+  <section class="stats" aria-label="ملخص إحصائي">
+    <div class="stat">
+      <span class="stat__value" id="statCount">0</span>
+      <span class="stat__label">عدد العمليات</span>
+    </div>
+    <div class="stat">
+      <span class="stat__value" id="statTotalSales">0</span>
+      <span class="stat__label">إجمالي المبيعات (ج.م)</span>
+    </div>
+    <div class="stat stat--good">
+      <span class="stat__value" id="statTotalPaid">0</span>
+      <span class="stat__label">إجمالي المدفوع (ج.م)</span>
+    </div>
+    <div class="stat stat--warn">
+      <span class="stat__value" id="statTotalRemaining">0</span>
+      <span class="stat__label">إجمالي المتبقي (ج.م)</span>
+    </div>
+    <div class="stat">
+      <span class="stat__value" id="statInstallmentCount">0</span>
+      <span class="stat__label">عمليات بالتقسيط</span>
+    </div>
+    <div class="stat">
+      <span class="stat__value" id="statCashCount">0</span>
+      <span class="stat__label">عمليات كاش</span>
+    </div>
+  </section>
+
+  <!-- ===================== الأقساط المستحقة ===================== -->
+  <section class="due-section" aria-label="الأقساط المستحقة">
+    <h2 class="section-title">الأقساط المستحقة والمتأخرة</h2>
+    <div class="due-tabs" role="tablist">
+      <button class="due-tab is-active" data-due="today" role="tab">مستحقة اليوم <span id="dueTodayCount" class="chip">0</span></button>
+      <button class="due-tab" data-due="week" role="tab">خلال 7 أيام <span id="dueWeekCount" class="chip">0</span></button>
+      <button class="due-tab" data-due="late" role="tab">متأخرة <span id="dueLateCount" class="chip chip--danger">0</span></button>
+    </div>
+    <div class="table-wrap">
+      <table class="due-table">
+        <thead>
+          <tr>
+            <th>اسم العميل</th>
+            <th>رقم الهاتف</th>
+            <th>قيمة القسط</th>
+            <th>تاريخ الاستحقاق</th>
+            <th>المتبقي</th>
+          </tr>
+        </thead>
+        <tbody id="dueTableBody">
+          <!-- تُبنى الصفوف تلقائيًا عبر JavaScript -->
+        </tbody>
+      </table>
+      <p id="dueEmptyMsg" class="empty-msg" hidden>لا توجد أقساط في هذا القسم.</p>
+    </div>
+  </section>
+
+  <!-- ===================== التقارير (رسوم بيانية بسيطة) ===================== -->
+  <section class="reports-section" aria-label="التقارير">
+    <h2 class="section-title">التقارير</h2>
+    <div class="reports-grid">
+      <div class="report-card">
+        <h3 class="report-card__title">المبيعات خلال آخر 6 أشهر</h3>
+        <div id="monthlySalesChart" class="chart-holder"></div>
+        <p id="monthlySalesEmptyMsg" class="empty-msg" hidden>لا توجد بيانات كافية لعرض هذا التقرير بعد.</p>
+      </div>
+      <div class="report-card">
+        <h3 class="report-card__title">الأكثر مبيعًا (الأجهزة)</h3>
+        <div id="topDevicesChart" class="chart-holder"></div>
+        <p id="topDevicesEmptyMsg" class="empty-msg" hidden>لا توجد بيانات كافية لعرض هذا التقرير بعد.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== سجل العملاء والمبيعات ===================== -->
+  <section class="records-section" aria-label="سجل العملاء والمبيعات">
+    <div class="records-header">
+      <h2 class="section-title">سجل العملاء والمبيعات</h2>
+      <div class="search-box">
+        <label for="searchInput" class="visually-hidden">بحث في السجل</label>
+        <input type="search" id="searchInput" placeholder="ابحث بالاسم، الهاتف، القرية، نوع الجهاز أو الماركة...">
+      </div>
+    </div>
+    <div class="filter-chips" role="group" aria-label="فلترة العمليات">
+      <button type="button" class="filter-chip is-active" data-filter="all">الكل</button>
+      <button type="button" class="filter-chip" data-filter="cash">كاش</button>
+      <button type="button" class="filter-chip" data-filter="installment">تقسيط</button>
+      <button type="button" class="filter-chip" data-filter="late">متأخر</button>
+      <button type="button" class="filter-chip" data-filter="paid">مسدد بالكامل</button>
+    </div>
+    <div class="table-wrap">
+      <table class="records-table">
+        <thead>
+          <tr>
+            <th>اسم العميل</th>
+            <th>القرية / البلد</th>
+            <th>رقم الهاتف</th>
+            <th>الجهاز</th>
+            <th>الماركة</th>
+            <th>السعر</th>
+            <th>نوع البيع</th>
+            <th>المدفوع</th>
+            <th>المتبقي</th>
+            <th>قيمة القسط</th>
+            <th>ميعاد القسط</th>
+            <th>الإجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="recordsTableBody">
+          <!-- تُبنى الصفوف تلقائيًا عبر JavaScript -->
+        </tbody>
+      </table>
+      <p id="recordsEmptyMsg" class="empty-msg" hidden>لا توجد بيانات بعد. اضغط "عملية بيع جديدة" للبدء.</p>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===================== نافذة إضافة / تعديل عملية بيع ===================== -->
+<div class="modal-overlay" id="saleModalOverlay" hidden>
+  <div class="modal modal--wide" role="dialog" aria-labelledby="saleModalTitle">
+    <div class="modal__header">
+      <h3 id="saleModalTitle">عملية بيع جديدة</h3>
+      <button type="button" class="modal__close" data-close-modal="saleModalOverlay" aria-label="إغلاق">×</button>
+    </div>
+    <form id="saleForm" class="modal__body" novalidate>
+      <input type="hidden" id="saleId">
+
+      <fieldset class="form-fieldset">
+        <legend>بيانات العميل</legend>
+        <div class="form-grid">
+          <div class="field">
+            <label for="customerName">الاسم الثلاثي *</label>
+            <input type="text" id="customerName" required autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="village">القرية / البلد / المدينة *</label>
+            <input type="text" id="village" required autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="phone">رقم الهاتف *</label>
+            <input type="tel" id="phone" required autocomplete="off" inputmode="numeric">
+            <p id="phoneDuplicateWarning" class="field-hint" hidden></p>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-fieldset">
+        <legend>بيانات الجهاز</legend>
+        <div class="form-grid">
+          <div class="field">
+            <label for="deviceType">نوع الجهاز *</label>
+            <input type="text" id="deviceType" list="deviceTypeList" required autocomplete="off" placeholder="ثلاجة، غسالة، بوتاجاز...">
+            <datalist id="deviceTypeList">
+              <option value="ثلاجة">
+              <option value="غسالة">
+              <option value="بوتاجاز">
+              <option value="تلفزيون">
+              <option value="تكييف">
+              <option value="سخان">
+              <option value="ميكروويف">
+            </datalist>
+          </div>
+          <div class="field">
+            <label for="brand">الماركة *</label>
+            <input type="text" id="brand" required autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="manufactureYear">سنة التصنيع</label>
+            <input type="number" id="manufactureYear" min="1990" max="2100" step="1" placeholder="مثال: 2024">
+          </div>
+          <div class="field">
+            <label for="price">سعر الجهاز (ج.م) *</label>
+            <input type="number" id="price" required min="0" step="0.01">
+          </div>
+          <div class="field">
+            <label for="purchaseDate">تاريخ الشراء *</label>
+            <input type="date" id="purchaseDate" required>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-fieldset">
+        <legend>نوع البيع</legend>
+        <div class="sale-type-toggle">
+          <label class="radio-pill">
+            <input type="radio" name="saleType" id="saleTypeCash" value="cash" checked>
+            <span>كاش</span>
+          </label>
+          <label class="radio-pill">
+            <input type="radio" name="saleType" id="saleTypeInstallment" value="installment">
+            <span>قسط</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-fieldset" id="installmentFieldset" hidden>
+        <legend>بيانات التقسيط</legend>
+        <div class="form-grid">
+          <div class="field">
+            <label for="downPayment">المقدم المدفوع (ج.م) *</label>
+            <input type="number" id="downPayment" min="0" step="0.01">
+          </div>
+          <div class="field">
+            <label>المبلغ المتبقي (ج.م)</label>
+            <input type="text" id="remainingPreview" disabled placeholder="يُحسب تلقائيًا">
+          </div>
+          <div class="field">
+            <label for="installmentsCount">عدد الأقساط *</label>
+            <input type="number" id="installmentsCount" min="1" step="1">
+          </div>
+          <div class="field">
+            <label>قيمة القسط (ج.م)</label>
+            <input type="text" id="installmentValuePreview" disabled placeholder="يُحسب تلقائيًا">
+          </div>
+          <div class="field">
+            <label for="firstInstallmentDate">تاريخ أول قسط *</label>
+            <input type="date" id="firstInstallmentDate">
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="modal__footer">
+        <button type="button" class="btn btn--ghost" data-close-modal="saleModalOverlay">إلغاء</button>
+        <button type="submit" class="btn btn--primary">حفظ العملية</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== نافذة إضافة دفعة / سجل الدفعات ===================== -->
+<div class="modal-overlay" id="paymentModalOverlay" hidden>
+  <div class="modal" role="dialog" aria-labelledby="paymentModalTitle">
+    <div class="modal__header">
+      <h3 id="paymentModalTitle">تسجيل دفعة جديدة</h3>
+      <button type="button" class="modal__close" data-close-modal="paymentModalOverlay" aria-label="إغلاق">×</button>
+    </div>
+    <div class="modal__body">
+      <p class="payment-summary" id="paymentSummary"></p>
+      <div class="info-grid" id="paymentDetailsGrid" aria-label="تفاصيل التقسيط"></div>
+      <form id="paymentForm">
+        <input type="hidden" id="paymentSaleId">
+        <div class="form-grid">
+          <div class="field">
+            <label for="paymentAmount">قيمة الدفعة (ج.م) *</label>
+            <input type="number" id="paymentAmount" min="0.01" step="0.01" required>
+          </div>
+          <div class="field">
+            <label for="paymentDate">تاريخ الدفع *</label>
+            <input type="date" id="paymentDate" required>
+          </div>
+        </div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--ghost" data-close-modal="paymentModalOverlay">إلغاء</button>
+          <button type="submit" class="btn btn--primary">تسجيل الدفعة</button>
+        </div>
+      </form>
+
+      <h4 class="payments-history-title">سجل الدفعات</h4>
+      <div class="table-wrap">
+        <table class="payments-table">
+          <thead>
+            <tr>
+              <th>تاريخ الدفع</th>
+              <th>قيمة الدفعة</th>
+              <th>إجمالي المدفوع بعدها</th>
+              <th>المتبقي بعدها</th>
+            </tr>
+          </thead>
+          <tbody id="paymentsHistoryBody"></tbody>
+        </table>
+        <p id="paymentsEmptyMsg" class="empty-msg" hidden>لا توجد دفعات مسجلة بعد.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== نافذة تأكيد الحذف ===================== -->
+<div class="modal-overlay" id="confirmModalOverlay" hidden>
+  <div class="modal modal--small" role="alertdialog" aria-labelledby="confirmModalTitle">
+    <div class="modal__header">
+      <h3 id="confirmModalTitle">تأكيد الحذف</h3>
+      <button type="button" class="modal__close" data-close-modal="confirmModalOverlay" aria-label="إغلاق">×</button>
+    </div>
+    <div class="modal__body">
+      <p id="confirmModalMessage">هل أنت متأكد من حذف هذه العملية؟ لا يمكن التراجع عن هذا الإجراء.</p>
+      <div class="modal__footer">
+        <button type="button" class="btn btn--ghost" data-close-modal="confirmModalOverlay">إلغاء</button>
+        <button type="button" class="btn btn--danger" id="btnConfirmDelete">حذف نهائيًا</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== نافذة ملف العميل ===================== -->
+<div class="modal-overlay" id="customerProfileModalOverlay" hidden>
+  <div class="modal modal--wide" role="dialog" aria-labelledby="customerProfileModalTitle">
+    <div class="modal__header">
+      <h3 id="customerProfileModalTitle">ملف العميل</h3>
+      <button type="button" class="modal__close" data-close-modal="customerProfileModalOverlay" aria-label="إغلاق">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="info-grid" id="customerProfileSummary" aria-label="ملخص العميل"></div>
+      <h4 class="payments-history-title">كل عمليات هذا العميل</h4>
+      <div class="table-wrap">
+        <table class="payments-table">
+          <thead>
+            <tr>
+              <th>الجهاز</th>
+              <th>السعر</th>
+              <th>نوع البيع</th>
+              <th>المتبقي</th>
+              <th>الحالة</th>
+            </tr>
+          </thead>
+          <tbody id="customerProfileSalesBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
